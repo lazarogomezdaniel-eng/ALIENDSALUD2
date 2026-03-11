@@ -204,10 +204,10 @@ tr+tr td{border-top:1px solid var(--border)}
     <div class="lbl" style="margin-bottom:8px">Tipo de actividad</div>
     <div id="tipopills" style="margin-bottom:14px"></div>
     <div class="grid2" style="margin-bottom:10px">
-      <div><div class="lbl">Duración (min)</div><input type="number" id="durin" placeholder="ej. 45"/></div>
-      <div><div class="lbl" id="caminlbl">Caminar (pasos)</div><input type="number" id="pasosin" placeholder="ej. 8500"/></div>
+      <div><div class="lbl">Duración (min)</div><input type="number" id="durin" placeholder="ej. 45" onblur="saveEjDuracion()"/></div>
+      <div><div class="lbl" id="caminlbl">Caminar (pasos)</div><input type="number" id="pasosin" placeholder="ej. 8500" onblur="saveEjPasos()"/></div>
     </div>
-    <button class="btn" onclick="saveEj()">Registrar</button>
+    <button class="btn" onclick="saveEj()">Guardar todo</button>
   </div>
   <div id="ejhoy" style="display:none" class="card">
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -361,24 +361,21 @@ tr+tr td{border-top:1px solid var(--border)}
     </div>
   </div>
 
-  <!-- Tomas de medicamentos (formato grid hora x med) -->
+  <!-- Tomas de medicamentos (3 tomas sin horario, igual que suplementos) -->
   <div class="card">
-    <div class="lbl" style="margin-bottom:10px">🕐 Medicamentos — tomas de hoy</div>
+    <div class="lbl" style="margin-bottom:10px">💊 Medicamentos — tomas de hoy</div>
     <div id="medtomas"></div>
     <div style="font-size:12px;color:var(--text3);margin-top:10px;text-align:center" id="medprog"></div>
   </div>
 
-  <!-- Gestionar medicamentos y horarios -->
+  <!-- Gestionar medicamentos -->
   <div class="card">
     <div class="lbl" style="margin-bottom:10px">⚙️ Gestionar medicamentos</div>
     <div id="medlista-edit" style="margin-bottom:12px"></div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+    <div style="display:flex;gap:8px">
       <input id="newmed2" placeholder="Nuevo medicamento..."/>
       <button class="btn" style="width:auto;margin-top:0;padding:10px 16px;white-space:nowrap" onclick="addMed2()">+</button>
     </div>
-    <div class="lbl" style="margin-bottom:8px">Horarios de toma</div>
-    <div id="medhoras" style="margin-bottom:10px"></div>
-    <button class="btn-ghost" onclick="addHoraMed()" style="margin-top:0;font-size:14px">+ Añadir horario</button>
   </div>
 
   <!-- Historial -->
@@ -689,12 +686,17 @@ function setHR(n){ prefs.hr=n; saveP(); renderDash(); }
 // ── PESO ─────────────────────────────────────────
 function savePeso(){
   var pv=parseFloat(el('pesoin').value); if(!pv) return;
-  var h=parseFloat(el('altin').value)/100;
+  var altVal=parseFloat(el('altin').value)||prefs.altura||170;
+  prefs.altura=altVal; saveP();
+  var h=altVal/100;
   var imc=h>0?(pv/(h*h)).toFixed(1):null;
   data.peso[today()]={peso:pv,imc:imc}; saveD();
   el('pesoin').value=''; renderPeso();
 }
 function renderPeso(){
+  // restore saved altura
+  var altIn=el('altin');
+  if(prefs.altura&&document.activeElement!==altIn) altIn.value=prefs.altura;
   var t=today(), p=data.peso[t];
   if(p){
     el('pesohoy').style.display='block';
@@ -714,7 +716,22 @@ function renderPeso(){
 // ── EJERCICIO ────────────────────────────────────
 var ejTipo='';
 function setCU(u){ prefs.caminaU=u; saveP(); renderEj(); }
-function setTipo(t){ ejTipo=t; renderEj(); }
+
+function ejMerge(patch){
+  var t=today();
+  if(!data.ejercicio[t]) data.ejercicio[t]={tipo:'',duracion:0,pasos:0};
+  var cur=data.ejercicio[t];
+  if(patch.tipo!==undefined) cur.tipo=patch.tipo;
+  if(patch.duracion!==undefined) cur.duracion=patch.duracion;
+  if(patch.pasos!==undefined) cur.pasos=patch.pasos;
+  saveD(); renderEj();
+}
+
+function setTipo(t){
+  ejTipo=t;
+  ejMerge({tipo:t});
+}
+
 function addTipo(){
   var v=el('newtipo').value.trim(); if(!v) return;
   if(!prefs.tiposList) prefs.tiposList=[];
@@ -723,18 +740,34 @@ function addTipo(){
 }
 function delTipo(t){
   prefs.tiposList=prefs.tiposList.filter(function(x){return x!==t;});
-  if(ejTipo===t) ejTipo='';
+  if(ejTipo===t){ ejTipo=''; ejMerge({tipo:''}); return; }
   saveP(); renderEj();
+}
+
+function saveEjDuracion(){
+  var dur=parseInt(el('durin').value); if(!dur||dur<=0) return;
+  ejMerge({duracion:dur});
+}
+function saveEjPasos(){
+  var raw=parseInt(el('pasosin').value); if(!raw||raw<=0) return;
+  var pasos=prefs.caminaU==='metros'?d2p(raw):raw;
+  ejMerge({pasos:pasos});
 }
 function saveEj(){
   var dur=parseInt(el('durin').value)||0;
   var raw=parseInt(el('pasosin').value)||0;
   var pasos=prefs.caminaU==='metros'?d2p(raw):raw;
-  data.ejercicio[today()]={tipo:ejTipo,duracion:dur,pasos:pasos}; saveD();
-  el('durin').value=''; el('pasosin').value=''; ejTipo=''; renderEj();
+  var patch={};
+  if(ejTipo) patch.tipo=ejTipo;
+  if(dur>0) patch.duracion=dur;
+  if(pasos>0) patch.pasos=pasos;
+  ejMerge(patch);
+  el('durin').value=''; el('pasosin').value='';
 }
 function renderEj(){
-  if(!prefs.tiposList||!prefs.tiposList.length) prefs.tiposList=['Pesas','Cardio','HIIT','Yoga','Pilates','Crossfit','Nataci\u00f3n','Bici','Otro'];
+  if(!prefs.tiposList||!prefs.tiposList.length) prefs.tiposList=['Pesas','Cardio','HIIT','Yoga','Pilates','Crossfit','Natación','Bici','Otro'];
+  var t=today(), ej=data.ejercicio[t];
+  if(ej&&ej.tipo&&!ejTipo) ejTipo=ej.tipo;
   var tipos=prefs.tiposList, h='', eh='', i;
   for(i=0;i<tipos.length;i++){
     var c=ejTipo===tipos[i]?' on':'';
@@ -750,13 +783,19 @@ function renderEj(){
   var btns=el('ctog').children;
   btns[0].className=prefs.caminaU==='pasos'?'ubtn on':'ubtn';
   btns[1].className=prefs.caminaU==='metros'?'ubtn on':'ubtn';
-  var t=today(), ej=data.ejercicio[t];
+  var durIn=el('durin'), pasIn=el('pasosin');
   if(ej){
     el('ejhoy').style.display='block';
-    setText('ejtd',(ej.tipo||'\u2014')+' \u2014 '+ej.duracion+' min');
-    setText('ejps','\ud83d\udeb6 '+p2d(ej.pasos||0).toLocaleString()+' '+caLbl());
-  } else el('ejhoy').style.display='none';
-  setText('pclbl',(prefs.caminaU==='metros'?'Metros':'Pasos')+' 7 d\u00edas');
+    setText('ejtd',(ej.tipo||'—')+(ej.duracion?' — '+ej.duracion+' min':''));
+    setText('ejps',ej.pasos?'🚶 '+p2d(ej.pasos).toLocaleString()+' '+caLbl():'');
+    if(document.activeElement!==durIn) durIn.value=ej.duracion||'';
+    if(document.activeElement!==pasIn) pasIn.value=ej.pasos?p2d(ej.pasos):'';
+  } else {
+    el('ejhoy').style.display='none';
+    if(document.activeElement!==durIn) durIn.value='';
+    if(document.activeElement!==pasIn) pasIn.value='';
+  }
+  setText('pclbl',(prefs.caminaU==='metros'?'Metros':'Pasos')+' 7 días');
   drawBar('cpa', getDays(7).map(function(d){ return {l:fmt(d),v:data.ejercicio[d]?p2d(data.ejercicio[d].pasos||0):0}; }), '#5C4FF6');
 }
 
@@ -774,6 +813,14 @@ function borrarHoy(modulo, renderFn){
   if(!confirm('¿Borrar el registro de hoy para este módulo?')) return;
   var t=today();
   if(modulo==='agua') data.agua[t]={vasos:0};
+  else if(modulo==='medicamentos'){
+    if(data.nutricion[t]&&data.nutricion[t].tomados){
+      var meds=prefs.medLista||[];
+      data.nutricion[t].tomados=data.nutricion[t].tomados.filter(function(k){
+        return !meds.some(function(m){ return k.indexOf(m+'|')===0; });
+      });
+    }
+  }
   else if(data[modulo]) delete data[modulo][t];
   saveD();
   if(renderFn && typeof window[renderFn]==='function') window[renderFn]();
@@ -881,7 +928,7 @@ function renderAyuno(){
   var db=el('ayunodelbtn'); if(db) db.style.display=ay?'inline-block':'none';
   var st=el('aystat'), btn=el('aybtn');
   if(ayActivo){
-    st.textContent='⏳ En curso desde '+ayStart; st.style.color=var_accent();
+    st.textContent='⏳ En curso desde '+ayStart; st.style.color='var(--accent)';
     btn.textContent='Terminar ayuno'; btn.style.background='var(--red2)'; btn.style.color='var(--red)'; btn.style.border='1.5px solid var(--red)';
   } else if(ay){
     var dur=calcDuracion(ay.inicio,ay.fin);
@@ -912,7 +959,7 @@ function renderAyuno(){
   set('ayhist', found?h:'<span style="color:var(--text3);font-size:13px">Sin registros</span>');
 }
 
-function var_accent(){ return '#5C4FF6'; }
+
 
 // ── NUTRICIÓN ────────────────────────────────────
 var SUPS_DEFAULT=['Proteína','Creatina','Omega 3','Vitamina D','Magnesio','Zinc'];
@@ -942,7 +989,7 @@ function togMed(m){
   var t=today(); if(!data.medicamentos[t]) data.medicamentos[t]={tomados:[]};
   var lista=data.medicamentos[t].tomados||[], idx=lista.indexOf(m);
   if(idx>=0) lista.splice(idx,1); else lista.push(m);
-  data.medicamentos[t].tomados=lista; saveD(); renderNut(); if(curTab==='medicacion') renderMed();
+  data.medicamentos[t].tomados=lista; saveD(); renderNut();
 }
 function addMed(){
   var v=el('newmed').value.trim(); if(!v) return;
@@ -957,99 +1004,81 @@ function delMed(m){
   prefs.medLista=prefs.medLista.filter(function(x){return x!==m;});
   saveP(); renderMed();
 }
-function addHoraMed(){
-  if(!prefs.medHorarios) prefs.medHorarios=[];
-  prefs.medHorarios.push('08:00'); saveP(); renderMed();
-}
-function delHora(i){
-  prefs.medHorarios.splice(i,1); saveP(); renderMed();
-}
-function updHora(i, v){
-  if(!prefs.medHorarios) prefs.medHorarios=[];
-  prefs.medHorarios[i]=v; saveP();
-}
-function togTomaHora(med, hora){
-  var t=today(); if(!data.medicamentos[t]) data.medicamentos[t]={tomados:[],tomas:{}};
-  if(!data.medicamentos[t].tomas) data.medicamentos[t].tomas={};
-  var key=med+'|'+hora;
-  if(data.medicamentos[t].tomas[key]) delete data.medicamentos[t].tomas[key];
-  else data.medicamentos[t].tomas[key]=true;
-  saveD(); renderMed();
+function togToma(med, n){
+  var t=today(); if(!data.nutricion[t]) data.nutricion[t]={tomados:[],comidaSana:null};
+  var key=med+'|'+n;
+  var lista=data.nutricion[t].tomados||[], idx=lista.indexOf(key);
+  if(idx>=0) lista.splice(idx,1); else lista.push(key);
+  data.nutricion[t].tomados=lista; saveD(); renderNut();
 }
 function renderMed(){
-  if(!prefs.medHorarios) prefs.medHorarios=['08:00','14:00','22:00'];
-  var t=today(), dm=data.medicamentos[t]||{}, tomas=dm.tomas||{};
-  var meds=prefs.medLista, horas=prefs.medHorarios, i, j;
+  var t=today(), tomados=(data.nutricion[t]&&data.nutricion[t].tomados)||[];
+  var meds=prefs.medLista||[], i, j;
 
-  // tomas de hoy — grid med x hora
-  var total=meds.length*horas.length, done=0;
-  var th='';
+  var total=meds.length*3, done=0, th='';
   if(!meds.length){
     th='<div style="color:var(--text3);font-size:14px;text-align:center;padding:10px 0">Añade medicamentos abajo para llevar el control</div>';
   } else {
-    // header horas
-    th+='<div style="display:grid;grid-template-columns:1fr '+horas.map(function(){return '60px';}).join(' ')+';gap:6px;margin-bottom:8px">';
+    th+='<div style="display:grid;grid-template-columns:1fr 50px 50px 50px;gap:6px;margin-bottom:8px">';
     th+='<div style="font-size:11px;color:var(--text3);font-weight:700">Medicamento</div>';
-    for(i=0;i<horas.length;i++) th+='<div style="font-size:11px;color:var(--accent);font-weight:700;text-align:center">'+horas[i]+'</div>';
-    th+='</div>';
+    th+='<div style="font-size:11px;color:var(--blue);font-weight:700;text-align:center">1\u00ba</div>';
+    th+='<div style="font-size:11px;color:var(--blue);font-weight:700;text-align:center">2\u00ba</div>';
+    th+='<div style="font-size:11px;color:var(--blue);font-weight:700;text-align:center">3\u00ba</div>';
+    th+="</div>";
     for(j=0;j<meds.length;j++){
-      th+='<div style="display:grid;grid-template-columns:1fr '+horas.map(function(){return '60px';}).join(' ')+';gap:6px;align-items:center;padding:8px 0;border-top:1px solid var(--border)">';
+      th+='<div style="display:grid;grid-template-columns:1fr 50px 50px 50px;gap:6px;align-items:center;padding:8px 0;border-top:1px solid var(--border)">';
       th+='<div style="font-size:14px;font-weight:600;color:var(--text)">'+meds[j]+'</div>';
-      for(i=0;i<horas.length;i++){
-        var key=meds[j]+'|'+horas[i], taken=tomas[key];
+      for(i=1;i<=3;i++){
+        var key=meds[j]+'|'+i, taken=tomados.indexOf(key)>=0;
         if(taken) done++;
-        th+='<button onclick="togTomaHora(\''+meds[j]+'\',\''+horas[i]+'\')" style="'+
-          'width:44px;height:44px;border-radius:50%;border:2px solid '+(taken?'var(--green)':'var(--border2)')+';'+
-          'background:'+(taken?'var(--green2)':'var(--surface2)')+';'+
-          'color:'+(taken?'var(--green)':'var(--text3)')+';font-size:18px;cursor:pointer;display:block;margin:0 auto">'+
-          (taken?'✓':'○')+'</button>';
+        var medQ=meds[j].replace(/\\/g,'\\\\').replace(/\'/g,"\\'");
+        th+='<button onclick="togToma(\''+medQ+'\','+i+')" style="'+
+          'width:44px;height:44px;border-radius:50%;border:2px solid '+(taken?'var(--blue)':'var(--border2)')+';'+
+          'background:'+(taken?'rgba(26,127,224,0.15)':'var(--surface2)')+';'+
+          'color:'+(taken?'var(--blue)':'var(--text3)')+';font-size:18px;cursor:pointer;display:block;margin:0 auto">'+
+          (taken?'\u2713':'\u25cb')+'</button>';
       }
-      th+='</div>';
+      th+="</div>";
     }
   }
   set('medtomas', th);
-  // progreso
-  if(total>0) setText('medprog', done+' de '+total+' tomas completadas hoy');
-  else setText('medprog','');
+  setText('medprog', meds.length?(done+' de '+total+' tomas completadas hoy'):'');
 
-  // lista editable
   var lh='';
   for(j=0;j<meds.length;j++){
+    var medQ2=meds[j].replace(/\\/g,'\\\\').replace(/\'/g,"\\'");
     lh+='<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">'+
-      '<span style="font-size:15px;color:var(--text);font-weight:500">💊 '+meds[j]+'</span>'+
-      '<button onclick="delMed(\''+meds[j]+'\')" style="background:var(--red2);border:1.5px solid var(--red);color:var(--red);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700">Quitar</button>'+
+      '<span style="font-size:15px;color:var(--text);font-weight:500">\ud83d\udc8a '+meds[j]+'</span>'+
+      '<button onclick="delMed(\''+medQ2+'\')" style="background:var(--red2);border:1.5px solid var(--red);color:var(--red);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700">Quitar</button>'+
     '</div>';
   }
   set('medlista-edit', lh||'<div style="color:var(--text3);font-size:13px">Sin medicamentos añadidos</div>');
 
-  // horarios editables
-  var hh='';
-  for(i=0;i<horas.length;i++){
-    hh+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'+
-      '<input type="time" value="'+horas[i]+'" onchange="updHora('+i+',this.value)" style="flex:1"/>'+
-      '<button onclick="delHora('+i+')" style="background:var(--red2);border:1.5px solid var(--red);color:var(--red);border-radius:7px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;white-space:nowrap">✕</button>'+
-    '</div>';
-  }
-  set('medhoras', hh);
-
-  // historial 7 días
   var days=getDays(7), hist='', found=false;
   for(i=days.length-1;i>=0;i--){
-    var d=days[i], dm2=data.medicamentos[d]||{}, tm=dm2.tomas||{}, tom=dm2.tomados||[];
-    var dayDone=0, dayTotal=meds.length*horas.length;
-    var keys=Object.keys(tm); dayDone=keys.filter(function(k){return tm[k];}).length;
-    if(!dayDone&&!tom.length) continue; found=true;
+    var d=days[i], tom=(data.nutricion[d]&&data.nutricion[d].tomados)||[];
+    var medTom=tom.filter(function(k){ return meds.some(function(m){ return k.indexOf(m+'|')===0; }); });
+    var dayDone=medTom.length, dayTotal=meds.length*3;
+    if(!dayDone) continue; found=true;
     var pct=dayTotal>0?Math.round(dayDone/dayTotal*100):0;
-    var pcol=pct>=80?'var(--green)':pct>=50?'var(--yellow)':'var(--red)';
-    hist+='<div class="hrow" style="display:flex;justify-content:space-between;align-items:center">'+
-      '<span class="hdate">'+fmt(d)+'</span>'+
-      '<div style="display:flex;align-items:center;gap:10px">'+
-        '<div style="width:80px;height:6px;border-radius:3px;background:var(--surface2)">'+
-          '<div style="width:'+pct+'%;height:6px;border-radius:3px;background:'+pcol+'"></div>'+
-        '</div>'+
-        '<span style="font-size:13px;font-weight:700;color:'+pcol+'">'+pct+'%</span>'+
-      '</div>'+
-    '</div>';
+    var pcol=pct>=80?'var(--blue)':pct>=50?'var(--yellow)':'var(--red)';
+    hist+='<div class="hrow">';
+    hist+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    hist+='<span class="hdate">'+fmt(d)+'</span>';
+    hist+='<span style="font-size:12px;font-weight:700;color:'+pcol+'">'+pct+'%</span>';
+    hist+='</div>';
+    for(j=0;j<meds.length;j++){
+      var tomadas=[];
+      for(var n2=1;n2<=3;n2++){ if(tom.indexOf(meds[j]+'|'+n2)>=0) tomadas.push(n2+'\u00ba'); }
+      if(!tomadas.length) continue;
+      hist+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+      hist+='<span style="font-size:13px;color:var(--text2)">'+meds[j]+'</span>';
+      for(var ti=0;ti<tomadas.length;ti++){
+        hist+='<span style="background:rgba(26,127,224,0.15);border:1.5px solid var(--blue);color:var(--blue);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">'+tomadas[ti]+'</span>';
+      }
+      hist+='</div>';
+    }
+    hist+='</div>';
   }
   set('medhist', found?hist:'<span style="color:var(--text3);font-size:13px">Sin registros aún</span>');
 }
@@ -1107,16 +1136,29 @@ function renderNut(){
   renderMed();
   // historial fusionado
   var hh='', found=false;
+  var meds=prefs.medLista||[];
   for(i=0;i<days7.length;i++){
-    var d=days7[i], nd=data.nutricion[d]||{}, md=data.medicamentos[d]||{};
-    var tomas=md.tomas||{}, tomKeys=Object.keys(tomas).filter(function(k){return tomas[k];}); 
-    if(!nd.tomados&&!tomKeys.length&&nd.comidaSana==null) continue; found=true;
+    var d=days7[i], nd=data.nutricion[d]||{};
+    var tom=nd.tomados||[];
+    var sups=tom.filter(function(k){ return k.indexOf('|')<0; });
+    var medTom=tom.filter(function(k){ return k.indexOf('|')>=0; });
+    if(!tom.length&&nd.comidaSana==null) continue; found=true;
     var cstxt='';
     if(nd.comidaSana===true) cstxt='<span style="color:var(--green);font-size:12px;font-weight:700">🥗 Sano</span>';
     else if(nd.comidaSana===false) cstxt='<span style="color:var(--red);font-size:12px;font-weight:700">🍔 No</span>';
     hh+='<div class="hrow"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="hdate">'+fmt(d)+'</span>'+cstxt+'</div>';
-    if(nd.tomados) for(j=0;j<nd.tomados.length;j++) hh+='<span style="margin-right:6px;color:var(--green);font-size:12px">✓ '+nd.tomados[j]+'</span>';
-    if(tomKeys.length) hh+='<span style="color:var(--accent);font-size:12px">💊 '+tomKeys.length+' toma'+(tomKeys.length>1?'s':'')+'</span>';
+    // suplementos en verde
+    for(j=0;j<sups.length;j++) hh+='<span style="margin-right:6px;color:var(--green);font-size:12px">\u2713 '+sups[j]+'</span>';
+    // medicamentos en azul con ordinal
+    if(medTom.length){
+      hh+='<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">';
+      for(j=0;j<medTom.length;j++){
+        var parts=medTom[j].split('|');
+        var medNom=parts[0], tomN=parts[1];
+        hh+='<span style="background:rgba(26,127,224,0.15);border:1.5px solid var(--blue);color:var(--blue);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">\ud83d\udc8a '+medNom+' '+tomN+'\u00ba</span>';
+      }
+      hh+='</div>';
+    }
     hh+='</div>';
   }
   set('nuthist', found?hh:'<span style="color:var(--text3);font-size:13px">Sin registros</span>');
