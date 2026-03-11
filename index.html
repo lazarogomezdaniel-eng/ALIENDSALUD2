@@ -204,21 +204,15 @@ tr+tr td{border-top:1px solid var(--border)}
     <div class="lbl" style="margin-bottom:8px">Tipo de actividad</div>
     <div id="tipopills" style="margin-bottom:14px"></div>
     <div class="grid2" style="margin-bottom:10px">
-      <div><div class="lbl">Duración (min)</div><input type="number" id="durin" placeholder="ej. 45" onblur="saveEjDuracion()"/></div>
-      <div><div class="lbl" id="caminlbl">Caminar (pasos)</div><input type="number" id="pasosin" placeholder="ej. 8500" onblur="saveEjPasos()"/></div>
+      <div><div class="lbl">Duración (min)</div><input type="number" id="durin" placeholder="ej. 45"/></div>
+      <div><div class="lbl" id="caminlbl">Caminar (pasos)</div><input type="number" id="pasosin" placeholder="ej. 8500"/></div>
     </div>
-    <button class="btn" onclick="saveEj()">Guardar todo</button>
+    <button class="btn" onclick="saveEj()">+ Añadir actividad</button>
   </div>
-  <div id="ejhoy" style="display:none" class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div class="lbl">Hoy</div>
-        <div style="display:flex;justify-content:space-between;margin-top:4px;gap:12px">
-          <span id="ejtd"></span><span style="color:var(--accent)" id="ejps"></span>
-        </div>
-      </div>
-      <button onclick="borrarHoy('ejercicio','renderEj')" class="delbtn">✕</button>
-    </div>
+  <div id="ejhoy" class="card" style="display:none">
+    <div class="lbl" style="margin-bottom:8px">Hoy</div>
+    <div id="ejlista"></div>
+    <div id="ejresumen" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:13px;color:var(--text2)"></div>
   </div>
   <div class="card">
     <div class="lbl" style="margin-bottom:10px">⚙️ Personalizar actividades</div>
@@ -544,7 +538,7 @@ var curTab='dashboard';
 function tabHasData(id){
   var t=today();
   if(id==='peso')       return !!data.peso[t];
-  if(id==='ejercicio')  return !!data.ejercicio[t];
+  if(id==='ejercicio'){ var ej=data.ejercicio[t]; return !!(ej&&(Array.isArray(ej.entradas)?ej.entradas.length>0:(ej.tipo||ej.duracion||ej.pasos))); }
   if(id==='sueno')      return !!data.sueno[t];
   if(id==='agua')       return !!(data.agua[t]&&data.agua[t].vasos>0);
   if(id==='animo')      return !!data.animo[t];
@@ -616,12 +610,21 @@ function renderDash(){
     '<div class="card"><div class="lbl">◉ Ánimo</div><div class="val" style="font-size:32px">'+ME[mv]+'</div><div class="sub">'+ML[mv]+'</div></div>'
   );
 
-  var ej=data.ejercicio[t]||null;
+  var ejRaw=data.ejercicio[t]||null;
   var cs=(data.nutricion[t]&&data.nutricion[t].comidaSana);
   var sup=(data.nutricion[t]&&data.nutricion[t].tomados)||[];
   var ejH='<div style="color:#4A5068;font-size:13px;margin-top:4px">Sin registro</div>';
-  if(ej){
-    ejH='<div style="display:flex;justify-content:space-between;margin-top:4px"><span>'+(ej.tipo||'Entreno')+' — '+ej.duracion+' min</span><span style="color:#7b6cf6">'+p2d(ej.pasos||0).toLocaleString()+' '+caLbl()+'</span></div>';
+  if(ejRaw){
+    var ents=Array.isArray(ejRaw.entradas)?ejRaw.entradas:(ejRaw.tipo||ejRaw.duracion?[ejRaw]:[]);
+    if(ents.length){
+      var totMin=0, totPasos=0;
+      ejH='';
+      for(var ei=0;ei<ents.length;ei++){
+        totMin+=ents[ei].duracion||0; totPasos+=ents[ei].pasos||0;
+        ejH+='<div style="font-size:13px;color:var(--text2);margin-top:3px">'+(ents[ei].tipo||'Actividad')+(ents[ei].duracion?' — '+ents[ei].duracion+' min':'')+'</div>';
+      }
+      if(totPasos) ejH+='<div style="font-size:12px;color:var(--accent);margin-top:2px">\ud83d\udeb6 '+p2d(totPasos).toLocaleString()+' '+caLbl()+'</div>';
+    }
   }
 
   // comida buttons state
@@ -670,7 +673,11 @@ function renderDash(){
   drawBar( 'ca-sueno',    getDays(hr).map(function(d){ return {l:fmt(d),v:data.sueno[d]?data.sueno[d].horas:null}; }), '#1A9E5C');
   drawBar( 'ca-agua',     getDays(hr).map(function(d){ return {l:fmt(d),v:data.agua[d]?v2d(data.agua[d].vasos):null}; }), '#1A7FE0');
   drawLine('ca-animo',    getDays(hr).map(function(d){ return {l:fmt(d),v:data.animo[d]?data.animo[d].val:null}; }), '#E07A1A');
-  drawBar( 'ca-ejercicio',getDays(hr).map(function(d){ return {l:fmt(d),v:data.ejercicio[d]?data.ejercicio[d].duracion:null}; }), '#9C27B0');
+  drawBar( 'ca-ejercicio',getDays(hr).map(function(d){ 
+    var dd=data.ejercicio[d]; if(!dd) return {l:fmt(d),v:null};
+    if(Array.isArray(dd.entradas)){ var tot=0; for(var k=0;k<dd.entradas.length;k++) tot+=dd.entradas[k].duracion||0; return {l:fmt(d),v:tot||null}; }
+    return {l:fmt(d),v:dd.duracion||null};
+  }), '#9C27B0');
   drawBar( 'ca-meditacion',getDays(hr).map(function(d){ var m=data.meditacion&&data.meditacion[d]; return {l:fmt(d),v:(m&&m.estado==='hecho')?m.mins:null}; }), '#00897B');
   drawBar( 'ca-ayuno',    getDays(hr).map(function(d){ var ay=data.ayuno[d]; if(!ay||!ay.inicio||!ay.fin) return {l:fmt(d),v:null}; var h2=calcDuracionH(ay.inicio,ay.fin); return {l:fmt(d),v:h2>0?h2:null}; }), '#E91E8C');
 }
@@ -717,21 +724,23 @@ function renderPeso(){
 var ejTipo='';
 function setCU(u){ prefs.caminaU=u; saveP(); renderEj(); }
 
-function ejMerge(patch){
+function ejGetHoy(){
   var t=today();
-  if(!data.ejercicio[t]) data.ejercicio[t]={tipo:'',duracion:0,pasos:0};
-  var cur=data.ejercicio[t];
-  if(patch.tipo!==undefined) cur.tipo=patch.tipo;
-  if(patch.duracion!==undefined) cur.duracion=patch.duracion;
-  if(patch.pasos!==undefined) cur.pasos=patch.pasos;
-  saveD(); renderEj();
+  if(!data.ejercicio[t]||!Array.isArray(data.ejercicio[t].entradas)){
+    // migrar formato antiguo si existe
+    var old=data.ejercicio[t];
+    if(old&&(old.tipo||old.duracion||old.pasos)){
+      data.ejercicio[t]={entradas:[{tipo:old.tipo||'',duracion:old.duracion||0,pasos:old.pasos||0}]};
+    } else {
+      data.ejercicio[t]={entradas:[]};
+    }
+  }
+  return data.ejercicio[t];
 }
 
 function setTipo(t){
-  ejTipo=t;
-  ejMerge({tipo:t});
+  ejTipo=t; renderEj();
 }
-
 function addTipo(){
   var v=el('newtipo').value.trim(); if(!v) return;
   if(!prefs.tiposList) prefs.tiposList=[];
@@ -740,34 +749,26 @@ function addTipo(){
 }
 function delTipo(t){
   prefs.tiposList=prefs.tiposList.filter(function(x){return x!==t;});
-  if(ejTipo===t){ ejTipo=''; ejMerge({tipo:''}); return; }
+  if(ejTipo===t) ejTipo='';
   saveP(); renderEj();
 }
-
-function saveEjDuracion(){
-  var dur=parseInt(el('durin').value); if(!dur||dur<=0) return;
-  ejMerge({duracion:dur});
-}
-function saveEjPasos(){
-  var raw=parseInt(el('pasosin').value); if(!raw||raw<=0) return;
-  var pasos=prefs.caminaU==='metros'?d2p(raw):raw;
-  ejMerge({pasos:pasos});
+function delEntrada(idx){
+  var d=ejGetHoy();
+  d.entradas.splice(idx,1);
+  saveD(); renderEj();
 }
 function saveEj(){
   var dur=parseInt(el('durin').value)||0;
   var raw=parseInt(el('pasosin').value)||0;
   var pasos=prefs.caminaU==='metros'?d2p(raw):raw;
-  var patch={};
-  if(ejTipo) patch.tipo=ejTipo;
-  if(dur>0) patch.duracion=dur;
-  if(pasos>0) patch.pasos=pasos;
-  ejMerge(patch);
-  el('durin').value=''; el('pasosin').value='';
+  if(!ejTipo&&!dur&&!pasos) return;
+  var d=ejGetHoy();
+  d.entradas.push({tipo:ejTipo||'',duracion:dur,pasos:pasos});
+  saveD();
+  el('durin').value=''; el('pasosin').value=''; ejTipo=''; renderEj();
 }
 function renderEj(){
-  if(!prefs.tiposList||!prefs.tiposList.length) prefs.tiposList=['Pesas','Cardio','HIIT','Yoga','Pilates','Crossfit','Natación','Bici','Otro'];
-  var t=today(), ej=data.ejercicio[t];
-  if(ej&&ej.tipo&&!ejTipo) ejTipo=ej.tipo;
+  if(!prefs.tiposList||!prefs.tiposList.length) prefs.tiposList=['Pesas','Cardio','HIIT','Yoga','Pilates','Crossfit','Nataci\u00f3n','Bici','Otro'];
   var tipos=prefs.tiposList, h='', eh='', i;
   for(i=0;i<tipos.length;i++){
     var c=ejTipo===tipos[i]?' on':'';
@@ -783,20 +784,43 @@ function renderEj(){
   var btns=el('ctog').children;
   btns[0].className=prefs.caminaU==='pasos'?'ubtn on':'ubtn';
   btns[1].className=prefs.caminaU==='metros'?'ubtn on':'ubtn';
-  var durIn=el('durin'), pasIn=el('pasosin');
-  if(ej){
+
+  var d=ejGetHoy(), entradas=d.entradas;
+  if(entradas.length){
     el('ejhoy').style.display='block';
-    setText('ejtd',(ej.tipo||'—')+(ej.duracion?' — '+ej.duracion+' min':''));
-    setText('ejps',ej.pasos?'🚶 '+p2d(ej.pasos).toLocaleString()+' '+caLbl():'');
-    if(document.activeElement!==durIn) durIn.value=ej.duracion||'';
-    if(document.activeElement!==pasIn) pasIn.value=ej.pasos?p2d(ej.pasos):'';
+    var lh='', totalMin=0, totalPasos=0;
+    for(i=0;i<entradas.length;i++){
+      var e=entradas[i];
+      totalMin+=e.duracion||0; totalPasos+=e.pasos||0;
+      lh+='<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">'+
+        '<div>'+
+          '<span style="font-size:14px;font-weight:600;color:var(--text)">'+(e.tipo||'Actividad')+'</span>'+
+          '<span style="font-size:12px;color:var(--text3);margin-left:8px">'+(e.duracion?e.duracion+' min':'')+
+          (e.pasos?' \u2022 '+p2d(e.pasos).toLocaleString()+' '+caLbl():'')+'</span>'+
+        '</div>'+
+        '<button onclick="delEntrada('+i+')" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:4px 8px">\u2715</button>'+
+      '</div>';
+    }
+    set('ejlista', lh);
+    var res='';
+    if(entradas.length>1) res+='<strong>Total:</strong> ';
+    if(totalMin) res+=totalMin+' min';
+    if(totalMin&&totalPasos) res+=' \u2022 ';
+    if(totalPasos) res+='\ud83d\udeb6 '+p2d(totalPasos).toLocaleString()+' '+caLbl();
+    set('ejresumen', entradas.length>1?res:'');
   } else {
     el('ejhoy').style.display='none';
-    if(document.activeElement!==durIn) durIn.value='';
-    if(document.activeElement!==pasIn) pasIn.value='';
   }
-  setText('pclbl',(prefs.caminaU==='metros'?'Metros':'Pasos')+' 7 días');
-  drawBar('cpa', getDays(7).map(function(d){ return {l:fmt(d),v:data.ejercicio[d]?p2d(data.ejercicio[d].pasos||0):0}; }), '#5C4FF6');
+  setText('pclbl',(prefs.caminaU==='metros'?'Metros':'Pasos')+' 7 d\u00edas');
+  drawBar('cpa', getDays(7).map(function(day){
+    var dd=data.ejercicio[day];
+    if(!dd) return {l:fmt(day),v:0};
+    if(Array.isArray(dd.entradas)){
+      var tot=0; for(var k=0;k<dd.entradas.length;k++) tot+=dd.entradas[k].pasos||0;
+      return {l:fmt(day),v:p2d(tot)};
+    }
+    return {l:fmt(day),v:p2d(dd.pasos||0)};
+  }), '#5C4FF6');
 }
 
 // ── SUEÑO ────────────────────────────────────────
@@ -1317,7 +1341,7 @@ function getVal(dstr, mk){
   if(mk==='sueno')      return data.sueno[dstr]?data.sueno[dstr].horas:null;
   if(mk==='agua')       return data.agua[dstr]?v2d(data.agua[dstr].vasos):null;
   if(mk==='animo')      return data.animo[dstr]?data.animo[dstr].val:null;
-  if(mk==='ejercicio')  return data.ejercicio[dstr]?data.ejercicio[dstr].duracion:null;
+  if(mk==='ejercicio'){ var dd=data.ejercicio[dstr]; if(!dd) return null; if(Array.isArray(dd.entradas)){ if(!dd.entradas.length) return null; var tot=0; for(var k=0;k<dd.entradas.length;k++) tot+=dd.entradas[k].duracion||0; return tot; } return dd.duracion||null; }
   if(mk==='meditacion') return (data.meditacion&&data.meditacion[dstr]&&data.meditacion[dstr].estado==='hecho')?data.meditacion[dstr].mins:null;
   if(mk==='ayuno'){
     var ay=data.ayuno[dstr]; if(!ay||!ay.inicio||!ay.fin) return null;
@@ -1346,9 +1370,10 @@ function getDayFull(dstr){
     suenoQ: data.sueno[dstr]?data.sueno[dstr].calidad:null,
     agua:   data.agua[dstr]?v2d(data.agua[dstr].vasos):null,
     animo:  data.animo[dstr]?data.animo[dstr].val:null,
-    ejercicio: data.ejercicio[dstr]?data.ejercicio[dstr].tipo:null,
-    ejMin:  data.ejercicio[dstr]?data.ejercicio[dstr].duracion:null,
-    pasos:  data.ejercicio[dstr]?p2d(data.ejercicio[dstr].pasos||0):null,
+    ejercicio: (function(){ var dd=data.ejercicio[dstr]; if(!dd) return null; if(Array.isArray(dd.entradas)&&dd.entradas.length) return dd.entradas.map(function(e){return e.tipo||'Actividad';}).join(', '); return dd.tipo||null; })(),
+    ejEntradas: (function(){ var dd=data.ejercicio[dstr]; if(!dd) return []; if(Array.isArray(dd.entradas)) return dd.entradas; return [{tipo:dd.tipo||'',duracion:dd.duracion||0,pasos:dd.pasos||0}]; })(),
+    ejMin:  (function(){ var dd=data.ejercicio[dstr]; if(!dd) return null; if(Array.isArray(dd.entradas)){ var tot=0; for(var k=0;k<dd.entradas.length;k++) tot+=dd.entradas[k].duracion||0; return tot||null; } return dd.duracion||null; })(),
+    pasos:  (function(){ var dd=data.ejercicio[dstr]; if(!dd) return null; if(Array.isArray(dd.entradas)){ var tot=0; for(var k=0;k<dd.entradas.length;k++) tot+=dd.entradas[k].pasos||0; return tot?p2d(tot):null; } return p2d(dd.pasos||0)||null; })(),
     meditar:(data.meditacion&&data.meditacion[dstr]&&data.meditacion[dstr].estado==='hecho')?data.meditacion[dstr].mins:null,
     ayuno:  (function(){ var ay=data.ayuno[dstr]; if(!ay||!ay.inicio) return null; return calcDuracionH(ay.inicio,ay.fin); })(),
     comida: data.nutricion[dstr]?data.nutricion[dstr].comidaSana:null
@@ -1457,11 +1482,18 @@ function renderRegSemana(mo){
   for(i=0;i<7;i++){
     var d=days[i], val=vals[i], isToday=(d===today());
     var valStr=val===null?'—':(mo.k==='comida'?(val===1?'✅ Sí':'❌ No'):val+(mo.unit?' '+mo.unit:''));
+    var extraCell='';
+    if(mo.k==='ejercicio' && val!==null){
+      var ejd=data.ejercicio[d];
+      var ents=ejd&&Array.isArray(ejd.entradas)?ejd.entradas:(ejd?[ejd]:[]);
+      var acts=ents.filter(function(e){return e.tipo;}).map(function(e){return e.tipo+(e.duracion?' '+e.duracion+'min':'');});
+      if(acts.length) extraCell='<div style="font-size:11px;color:var(--text3);text-align:right">'+acts.join(' · ')+'</div>';
+    }
     th+='<tr style="border-top:1px solid var(--border)">'+
       '<td style="padding:8px 0;font-size:13px;color:'+(isToday?'var(--accent)':'var(--text)')+';font-weight:'+(isToday?'700':'400')+'">'+
         DAYS_FULL[i]+' <span style="color:var(--text3);font-size:11px">'+d.slice(5).replace('-','/')+'</span>'+(isToday?' ●':'')+
       '</td>'+
-      '<td style="text-align:right;font-weight:700;color:'+(val===null?'var(--text3)':mo.col)+'">'+valStr+'</td>'+
+      '<td style="text-align:right;font-weight:700;color:'+(val===null?'var(--text3)':mo.col)+'">'+valStr+extraCell+'</td>'+
     '</tr>';
   }
   th+='</tbody></table>';
@@ -1484,7 +1516,20 @@ function renderRegSemana(mo){
     if(df.sueno!==null)   dh+=regPill('◐',df.sueno+'h (cal.'+df.suenoQ+'/5)','#1A9E5C');
     if(df.agua!==null)    dh+=regPill('◈',df.agua+' '+agLbl(),'#1A7FE0');
     if(df.animo!==null)   dh+=regPill((AE[df.animo]||'◉'),'Ánimo '+df.animo+'/5','#E07A1A');
-    if(df.ejercicio)      dh+=regPill('⚡',df.ejercicio+' '+df.ejMin+'min','#9C27B0');
+    if(df.ejEntradas&&df.ejEntradas.length){
+      for(var ei=0;ei<df.ejEntradas.length;ei++){
+        var ent=df.ejEntradas[ei];
+        var etxt=(ent.tipo||'Actividad')+(ent.duracion?' '+ent.duracion+'min':'');
+        if(ent.pasos) etxt+=' \u2022 '+p2d(ent.pasos).toLocaleString()+' '+caLbl();
+        dh+=regPill('⚡',etxt,'#9C27B0');
+      }
+      if(df.ejEntradas.length>1){
+        var restxt='';
+        if(df.ejMin) restxt+=df.ejMin+' min';
+        if(df.pasos){ if(restxt) restxt+=' \u2022 '; restxt+=df.pasos+' '+caLbl(); }
+        if(restxt) dh+=regPill('\u23f1','Total: '+restxt,'#6A1B9A');
+      }
+    }
     if(df.meditar!==null) dh+=regPill('🧘',df.meditar+' min','#00897B');
     if(df.ayuno)          dh+=regPill('◷',df.ayuno+'h ayuno','#E91E8C');
     if(df.comida===true)  dh+=regPill('🥗','Comida sana','#4CAF50');
